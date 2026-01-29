@@ -1,4 +1,6 @@
-# Quote & Reply for Gemini
+# Quote & Reply for Google Gemini
+
+![](src/icon128.png)
 
 ### Select any text in Gemini's responses and reply with automatic context. Makes follow-up questions clearer and more specific.
 
