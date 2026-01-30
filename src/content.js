@@ -12,7 +12,7 @@
             extensionEnabled = result.enabled !== false;
             if (!extensionEnabled) {
                 cleanupUI();
-                setTimeout(showDisabledNudge, 1000); 
+                setTimeout(showDisabledNudge, 1000);
             }
         });
     }
@@ -23,9 +23,10 @@
                 extensionEnabled = request.enabled;
                 if (!extensionEnabled) {
                     cleanupUI();
-                    showDisabledNudge(); 
+                    showDisabledNudge();
                 } else {
                     removeNudge();
+                    handleDomUpdates();
                 }
             }
         });
@@ -339,8 +340,12 @@
         }
     }
 
-    const mo = new MutationObserver(() => {
+    // EXTRACTED FUNCTION: Handles scanning the chat bubbles
+    // We extracted this so we can call it manually when you click "Enable"
+    function handleDomUpdates() {
         if (!extensionEnabled) return;
+
+        // A. Input Chip Logic
         if (replyContext) {
             const container = findComposerContainer();
             const chip = document.getElementById(CHIP_ID);
@@ -402,7 +407,9 @@
                 p.setAttribute('data-reply-processed', 'true');
             }
         });
-    });
+    }
+
+    const mo = new MutationObserver(handleDomUpdates);
 
     const obsInit = () => { mo.observe(document.body, { childList: true, subtree: true }); };
     setTimeout(obsInit, 500);
