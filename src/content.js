@@ -733,17 +733,32 @@
     }
     document.addEventListener("mouseup", () => {
         if (!extensionEnabled) return;
-        const sel = getSelection();
-        if (sel && sel.anchorNode) {
-            const anchor = sel.anchorNode.nodeType === Node.ELEMENT_NODE ? sel.anchorNode : sel.anchorNode.parentElement;
-            if (!anchor.closest("structured-content-container, .model-response-text, model-response")) { hideButton(); return; }
-        }
-        const text = selectionText(sel);
-        if (text.length > 2) {
-            const range = sel.getRangeAt(0); const rect = range.getBoundingClientRect(); positionButtonNear(rect);
-        } else { hideButton(); }
-    });
+        setTimeout(() => {
+            const sel = window.getSelection();
 
+            if (!sel || sel.isCollapsed || sel.toString().trim().length === 0) {
+                hideButton();
+                return;
+            }
+
+            if (sel.anchorNode) {
+                const anchor = sel.anchorNode.nodeType === Node.ELEMENT_NODE ? sel.anchorNode : sel.anchorNode.parentElement;
+                if (!anchor.closest("structured-content-container, .model-response-text, model-response")) {
+                    hideButton();
+                    return;
+                }
+            }
+
+            const text = selectionText(sel);
+            if (text.length > 2) {
+                const range = sel.getRangeAt(0);
+                const rect = range.getBoundingClientRect();
+                positionButtonNear(rect);
+            } else {
+                hideButton();
+            }
+        }, 10); 
+    });
     document.addEventListener("click", (e) => {
         if (!extensionEnabled) return;
         const sendBtn = findSendButton();
