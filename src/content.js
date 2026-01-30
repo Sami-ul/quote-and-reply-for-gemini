@@ -59,11 +59,20 @@
     // Defines colors for Light and Dark modes automatically based on parent body class
     const THEME_CSS = `
         /* Animations */
+        
         @keyframes fadeInButton {
             from { opacity: 0; transform: translateY(4px); }
             to { opacity: 1; transform: translateY(0); }
+        }   
+        /* Highlight animation for the target message */
+        @keyframes flashHighlight {
+            0% { background-color: rgba(168, 199, 250, 0.4); }
+            100% { background-color: transparent; }
         }
-        
+        .highlight-flash {
+            animation: flashHighlight 1.5s ease-out;
+            border-radius: 4px;
+        }
         @keyframes fadeInChip {
             from { 
                 opacity: 0; 
@@ -292,6 +301,7 @@
 
 
     let replyContext = "";
+    let replySourceId = null;
     let injecting = false;
 
     function buildContextBlock(context, asHtml = false) {
@@ -299,9 +309,11 @@
         if (cleanContext.length > MAX_CONTEXT_CHARS) {
             cleanContext = cleanContext.slice(0, MAX_CONTEXT_CHARS) + "…";
         }
-        return `The user is referring to this part of the chat: > ${cleanContext} ${SEPARATOR} `;
-    }
 
+        const idBlock = replySourceId ? `source_id:${replySourceId} ${SEPARATOR} ` : "";
+
+        return `The user is referring to this part of the chat: > ${cleanContext} ${SEPARATOR} ${idBlock}`;
+    }
     function maybeInjectAndSend() {
         if (injecting) return false;
         if (!replyContext) return false;
@@ -340,12 +352,9 @@
         }
     }
 
-    // EXTRACTED FUNCTION: Handles scanning the chat bubbles
-    // We extracted this so we can call it manually when you click "Enable"
     function handleDomUpdates() {
         if (!extensionEnabled) return;
 
-        // A. Input Chip Logic
         if (replyContext) {
             const container = findComposerContainer();
             const chip = document.getElementById(CHIP_ID);
@@ -380,10 +389,26 @@
                 let tempQuote = firstPart.replace("The user is referring to this part of the chat:", "").trim();
                 if (tempQuote.startsWith('>')) tempQuote = tempQuote.substring(1).trim();
                 const rawQuote = tempQuote;
+
+                let extractedId = null;
+                for (let i = 1; i < splitParts.length - 1; i++) {
+                    const part = splitParts[i].trim();
+                    if (part.startsWith('source_id:')) {
+                        extractedId = part.replace('source_id:', '').trim();
+                    }
+                }
+
                 const replyRemainder = splitParts[splitParts.length - 1];
 
                 const chip = document.createElement('div');
                 chip.className = 'gemini-reply-chip-in-chat';
+
+                chip.style.cursor = "pointer";
+                chip.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    scrollToQuote(rawQuote, chip, extractedId);
+                });
 
                 chip.innerHTML = `
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--reply-accent)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
@@ -474,6 +499,12 @@
         if (btn) return btn;
         btn = document.createElement("button");
         btn.id = BTN_ID;
+        btn.style.cssText = `
+            position: absolute; /* <--- CHANGED FROM FIXED */
+            z-index: 999999;
+            display: none;
+            /* ... keep your other styling (align-items, padding, colors, etc.) ... */
+        `;
         btn.setAttribute('tabindex', '0');
         btn.innerHTML = `
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 6px;">
@@ -493,14 +524,17 @@
             }
         });
         btn.addEventListener("click", () => {
-            const text = selectionText(getSelection());
+            const sel = window.getSelection();
+            const text = selectionText(sel);
+
             if (text) {
                 replyContext = text;
+
+                const anchor = sel.anchorNode.nodeType === Node.ELEMENT_NODE ? sel.anchorNode : sel.anchorNode.parentElement;
+                const messageContainer = anchor.closest('message-content');
+                replySourceId = messageContainer ? messageContainer.id : null;
+
                 renderChip();
-                setTimeout(() => {
-                    const chip = document.getElementById(CHIP_ID);
-                    if (chip) chip.focus();
-                }, 10);
                 hideButton();
                 const input = findComposerInput();
                 if (input) {
@@ -645,12 +679,58 @@
     function hideButton() { const b = document.getElementById(BTN_ID); if (b) b.style.display = "none"; }
     function positionButtonNear(rect) {
         const btn = ensureButton();
+
+        const scrollX = window.scrollX || window.pageXOffset;
+        const scrollY = window.scrollY || window.pageYOffset;
+
+        const btnHeight = 40;
+        const isTopVisible = rect.top > (btnHeight + 10);
+
+        let top;
+        if (isTopVisible) {
+            top = (rect.top + scrollY) - btnHeight - 8;
+        } else {
+            top = (rect.bottom + scrollY) + 10;
+        }
+
+        const btnWidth = 140;
+        let left = (rect.left + scrollX) + (rect.width / 2) - (btnWidth / 2);
+
+        const maxLeft = document.body.clientWidth - btnWidth - 16;
+        left = Math.max(16, Math.min(left, maxLeft));
+
+        btn.style.top = `${top}px`;
+        btn.style.left = `${left}px`;
         btn.style.display = "flex";
-        btn.style.top = `${rect.top - 48}px`;
-        btn.style.left = `${rect.left}px`;
     }
     function truncate(str, n) { return str.length > n ? str.slice(0, n - 1) + "…" : str; }
+    function scrollToQuote(targetText, currentChip, targetId) {
+        if (targetId) {
+            const targetEl = document.getElementById(targetId);
+            if (targetEl) {
+                targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                targetEl.classList.add('highlight-flash');
+                setTimeout(() => targetEl.classList.remove('highlight-flash'), 1500);
+                return;
+            }
+        }
 
+        if (!targetText) return;
+        const cleanTarget = targetText.toLowerCase().replace(/\s+/g, ' ').trim();
+        const candidates = document.querySelectorAll('.query-text-line, structured-content-container, .model-response-text');
+        const reversedCandidates = Array.from(candidates).reverse();
+
+        for (const el of reversedCandidates) {
+            if (el.contains(currentChip) || currentChip.contains(el)) continue;
+            const elText = el.textContent.toLowerCase().replace(/\s+/g, ' ').trim();
+            if (elText.includes(cleanTarget)) {
+                el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                el.classList.add('highlight-flash');
+                setTimeout(() => el.classList.remove('highlight-flash'), 1500);
+                return;
+            }
+        }
+    }
     document.addEventListener("mouseup", () => {
         if (!extensionEnabled) return;
         const sel = getSelection();
@@ -683,5 +763,11 @@
         }
 
     }, true);
+    document.addEventListener("selectionchange", () => {
+        const sel = window.getSelection();
+        if (!sel || sel.isCollapsed) {
+            hideButton();
+        }
+    });
     window.addEventListener('beforeunload', cleanup);
 })();
