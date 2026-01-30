@@ -1,6 +1,7 @@
 # Quote & Reply for Google Gemini
 
-![](assets/banner.jpg)
+![Context Reply for Gemini](assets/banner.jpg)
+[![Video Demo](https://img.youtube.com/vi/-V1hlhGvgOs/0.jpg)](https://www.youtube.com?v=-V1hlhGvgOs)
 
 ### Select any text in Gemini's responses and reply with automatic context. Makes follow-up questions clearer and more specific.
 
