@@ -1,6 +1,6 @@
 # Quote & Reply for Google Gemini
 
-![](src/icon128.png)
+![](assets/banner.jpg)
 
 ### Select any text in Gemini's responses and reply with automatic context. Makes follow-up questions clearer and more specific.
 
