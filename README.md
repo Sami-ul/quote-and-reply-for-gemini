@@ -1,7 +1,6 @@
 # Quote & Reply for Google Gemini
 
-![Context Reply for Gemini](assets/banner.jpg)
-[![Video Demo](https://img.youtube.com/vi/-V1hlhGvgOs/0.jpg)](https://www.youtube.com/watch?v=-V1hlhGvgOs)
+[![Video Demo](https://img.youtube.com/vi/-V1hlhGvgOs/maxresdefault.jpg)](https://www.youtube.com/watch?v=-V1hlhGvgOs)
 
 ### Select any text in Gemini's responses and reply with automatic context. Makes follow-up questions clearer and more specific.
 
@@ -20,3 +19,4 @@ This extension fixes that with a native-feeling workflow allowing users to reply
 ### After:
 ![Gemini with the new native-feeling extension allowing you to reply to it](assets/image-1.png)
 ![Replying to a specific portion without extra workflow overhead](assets/image-2.png)
+![Context Reply for Gemini Video](assets/banner.jpg)
