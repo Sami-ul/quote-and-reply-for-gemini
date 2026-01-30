@@ -5,7 +5,8 @@
   "description": "Select any text in Gemini's responses and reply with automatic context. Makes follow-up questions clearer and more specific.",
   
   "permissions": [
-    "activeTab"
+    "activeTab",
+    "storage"
   ],
   
   "host_permissions": [
@@ -35,6 +36,7 @@
       "48": "icon48.png",
       "128": "icon128.png"
     },
+    "default_popup":"popup.html",
     "default_title": "Quote & Reply for Gemini"
   }
 }

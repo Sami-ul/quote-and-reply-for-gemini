@@ -5,6 +5,37 @@
     const SEPARATOR = "___";
     const MAX_CONTEXT_CHARS = 900;
     const MAX_CHIP_PREVIEW = 80;
+    let extensionEnabled = true;
+
+    if (typeof chrome !== 'undefined' && chrome.storage) {
+        chrome.storage.local.get(['enabled'], (result) => {
+            extensionEnabled = result.enabled !== false;
+            if (!extensionEnabled) {
+                cleanupUI();
+                setTimeout(showDisabledNudge, 1000); 
+            }
+        });
+    }
+
+    if (typeof chrome !== 'undefined' && chrome.runtime) {
+        chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+            if (request.action === "togglePlugin") {
+                extensionEnabled = request.enabled;
+                if (!extensionEnabled) {
+                    cleanupUI();
+                    showDisabledNudge(); 
+                } else {
+                    removeNudge();
+                }
+            }
+        });
+    }
+
+    function cleanupUI() {
+        hideButton();
+        removeChip();
+        replyContext = "";
+    }
     let activeListeners = [];
 
     function addManagedListener(element, event, handler, options) {
@@ -309,6 +340,7 @@
     }
 
     const mo = new MutationObserver(() => {
+        if (!extensionEnabled) return;
         if (replyContext) {
             const container = findComposerContainer();
             const chip = document.getElementById(CHIP_ID);
@@ -435,7 +467,7 @@
         if (btn) return btn;
         btn = document.createElement("button");
         btn.id = BTN_ID;
-        btn.setAttribute('tabindex', '0'); 
+        btn.setAttribute('tabindex', '0');
         btn.innerHTML = `
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 6px;">
                 <path d="M9 14L4 9l5-5"/>
@@ -516,7 +548,7 @@
         chip.querySelector(`#${CHIP_ID}-preview`).textContent = truncate(replyContext.replace(/\s+/g, " ").trim(), MAX_CHIP_PREVIEW);
 
         chip.style.display = "none";
-        chip.offsetHeight; 
+        chip.offsetHeight;
         chip.style.display = "flex";
         requestAnimationFrame(() => {
             chip.classList.add('show');
@@ -531,10 +563,75 @@
             setTimeout(() => {
                 c.style.display = "none";
                 c.classList.remove('fade-out');
-            }, 250); 
+            }, 250);
         }
     }
+    function showDisabledNudge() {
+        if (document.getElementById('gemini-reply-nudge')) return;
+        if (sessionStorage.getItem('gemini-reply-nudge-dismissed')) return;
 
+        const nudge = document.createElement('div');
+        nudge.id = 'gemini-reply-nudge';
+
+        nudge.style.cssText = `
+            position: fixed;
+            top: 16px;
+            right: 16px;
+            max-width: 280px;
+            background: var(--reply-bg);
+            border: 1px solid var(--reply-border);
+            color: var(--reply-text-primary);
+            padding: 12px 16px;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px var(--reply-btn-shadow);
+            font-family: var(--reply-font);
+            font-size: 13px;
+            line-height: 1.4;
+            z-index: 999999;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            animation: slideIn 0.3s cubic-bezier(0.2, 0.0, 0.2, 1);
+        `;
+
+        nudge.innerHTML = `
+            <div style="display: flex; align-items: flex-start; gap: 10px;">
+                <div style="background: var(--reply-bg-hover); border-radius: 50%; padding: 6px; display: flex;">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--reply-accent)" stroke-width="2">
+                        <path d="M7 17L17 7M17 7H7M17 7V17"/>
+                    </svg>
+                </div>
+                <div>
+                    <div style="font-weight: 600; color: var(--reply-accent); margin-bottom: 2px;">Extension Disabled</div>
+                    <div style="opacity: 0.9;">Enable <b>Quote & Reply for Gemini</b> to access quote & reply features.</div>
+                </div>
+            </div>
+            <button id="nudge-close" style="align-self: flex-end; background: none; border: none; color: var(--reply-text-secondary); font-family: var(--reply-font); font-size: 11px; font-weight: 500; cursor: pointer; padding: 4px 8px; margin-top: 4px; transition: background 0.15s, opacity 0.15s;">Dismiss</button>
+            <style>
+                @keyframes slideIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+                #nudge-close:hover {
+                    background: var(--reply-bg-hover);
+                    opacity: 1;
+                }
+                #nudge-close {
+                    opacity: 0.8;
+                }
+            </style>
+        `;
+
+        document.body.appendChild(nudge);
+
+        const closeBtn = nudge.querySelector('#nudge-close');
+        closeBtn.addEventListener('click', () => {
+            nudge.remove();
+            sessionStorage.setItem('gemini-reply-nudge-dismissed', 'true');
+        });
+    }
+
+    function removeNudge() {
+        const nudge = document.getElementById('gemini-reply-nudge');
+        if (nudge) nudge.remove();
+    }
     function scheduleChipRender() { if (!replyContext) return; requestAnimationFrame(renderChip); }
     function getSelection() { const sel = window.getSelection(); return (sel && sel.rangeCount > 0) ? sel : null; }
     function selectionText(sel) { return (sel?.toString() || "").trim(); }
@@ -548,6 +645,7 @@
     function truncate(str, n) { return str.length > n ? str.slice(0, n - 1) + "…" : str; }
 
     document.addEventListener("mouseup", () => {
+        if (!extensionEnabled) return;
         const sel = getSelection();
         if (sel && sel.anchorNode) {
             const anchor = sel.anchorNode.nodeType === Node.ELEMENT_NODE ? sel.anchorNode : sel.anchorNode.parentElement;
@@ -560,6 +658,7 @@
     });
 
     document.addEventListener("click", (e) => {
+        if (!extensionEnabled) return;
         const sendBtn = findSendButton();
         if (sendBtn && (e.target === sendBtn || sendBtn.contains(e.target))) {
             if (maybeInjectAndSend()) { e.preventDefault(); e.stopPropagation(); }
@@ -567,6 +666,7 @@
     }, true);
 
     document.addEventListener("keydown", (e) => {
+        if (!extensionEnabled) return;
         if (e.key === "Enter" && !e.shiftKey) {
             if (maybeInjectAndSend()) { e.preventDefault(); e.stopPropagation(); }
         }
