@@ -2,7 +2,7 @@
 (() => {
     const BTN_ID = "gemini-reply-float-btn";
     const CHIP_ID = "gemini-reply-chip";
-    const SEPARATOR = "___";
+    const SEPARATOR = "⟦◈⟧";
     const MAX_CONTEXT_CHARS = 900;
     const MAX_CHIP_PREVIEW = 80;
     let extensionEnabled = true;
@@ -26,6 +26,9 @@
                     showDisabledNudge();
                 } else {
                     removeNudge();
+                    document.querySelectorAll('.gemini-reply-chip-in-chat').forEach(chip => {
+                        chip.style.display = '';
+                    });
                     handleDomUpdates();
                 }
             }
@@ -36,6 +39,10 @@
         hideButton();
         removeChip();
         replyContext = "";
+        replySourceId = null;
+        document.querySelectorAll('.gemini-reply-chip-in-chat').forEach(chip => {
+            chip.style.display = 'none';
+        });
     }
     let activeListeners = [];
 
@@ -331,15 +338,23 @@
             const contextBlock = buildContextBlock(replyContext, useHtml);
             const composed = contextBlock + (original || "");
 
-            setComposerText(input, composed, useHtml);
+            const originalColor = input.style.color;
+            input.style.color = 'transparent';
+
+            setComposerTextDirect(input, composed, useHtml);
 
             requestAnimationFrame(() => {
                 sendBtn.click();
                 removeChip();
+                
+                setTimeout(() => {
+                    input.style.color = originalColor || '';
+                }, 50);
+                
                 setTimeout(() => {
                     const now = getComposerText(input);
                     if (now && now.trim().length > 0) {
-                        setComposerText(input, original, useHtml);
+                        setComposerTextDirect(input, original, useHtml);
                     }
                     clearReplyContext();
                     injecting = false;
@@ -347,6 +362,9 @@
             });
             return true;
         } catch (err) {
+            if (input) {
+                input.style.color = '';
+            }
             injecting = false;
             return false;
         }
@@ -364,6 +382,9 @@
         const textLines = document.querySelectorAll('p.query-text-line');
         textLines.forEach(p => {
             if (p.getAttribute('data-reply-processed')) return;
+
+            const fullParagraphText = p.textContent || '';
+            if (!fullParagraphText.includes(SEPARATOR)) return;
 
             const walker = document.createTreeWalker(p, NodeFilter.SHOW_TEXT, null, false);
             let targetNode = null;
@@ -384,11 +405,22 @@
             if (targetNode) {
                 const fullText = targetNode.textContent;
                 const splitParts = fullText.split(SEPARATOR);
+                
+                if (splitParts.length < 2) {
+                    p.setAttribute('data-reply-processed', 'true');
+                    return;
+                }
+                
                 const firstPart = splitParts[0];
 
                 let tempQuote = firstPart.replace("The user is referring to this part of the chat:", "").trim();
                 if (tempQuote.startsWith('>')) tempQuote = tempQuote.substring(1).trim();
                 const rawQuote = tempQuote;
+                
+                if (!rawQuote || rawQuote.length < 2) {
+                    p.setAttribute('data-reply-processed', 'true');
+                    return;
+                }
 
                 let extractedId = null;
                 for (let i = 1; i < splitParts.length - 1; i++) {
@@ -410,19 +442,27 @@
                     scrollToQuote(rawQuote, chip, extractedId);
                 });
 
+                const escapedQuote = truncate(rawQuote, 70)
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;');
+
                 chip.innerHTML = `
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--reply-accent)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M9 14L4 9l5-5"/>
                         <path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5v0a5.5 5.5 0 0 1-5.5 5.5H11"/>
                     </svg>
                     <div class="gemini-reply-content">
-                        <span class="gemini-reply-text">"${truncate(rawQuote, 70)}"</span>
+                        <span class="gemini-reply-text">"${escapedQuote}"</span>
                     </div>
                 `;
 
                 targetNode.textContent = replyRemainder.trimStart();
                 precedingNodes.forEach(node => {
-                    if (node.parentNode === p) p.removeChild(node);
+                    try {
+                        if (node.parentNode === p) p.removeChild(node);
+                    } catch (e) {}
                 });
                 while (p.firstChild && (p.firstChild.nodeName === 'BR' || (p.firstChild.nodeType === 3 && !p.firstChild.textContent.trim()))) {
                     p.removeChild(p.firstChild);
@@ -436,7 +476,12 @@
 
     const mo = new MutationObserver(handleDomUpdates);
 
-    const obsInit = () => { mo.observe(document.body, { childList: true, subtree: true }); };
+    const obsInit = () => { 
+        mo.observe(document.body, { childList: true, subtree: true }); 
+        if (extensionEnabled) {
+            handleDomUpdates();
+        }
+    };
     setTimeout(obsInit, 500);
 
 
@@ -527,11 +572,11 @@
             const sel = window.getSelection();
             const text = selectionText(sel);
 
-            if (text) {
+            if (text && sel && sel.anchorNode) {
                 replyContext = text;
 
                 const anchor = sel.anchorNode.nodeType === Node.ELEMENT_NODE ? sel.anchorNode : sel.anchorNode.parentElement;
-                const messageContainer = anchor.closest('message-content');
+                const messageContainer = anchor ? anchor.closest('message-content') : null;
                 replySourceId = messageContainer ? messageContainer.id : null;
 
                 renderChip();
@@ -539,12 +584,14 @@
                 const input = findComposerInput();
                 if (input) {
                     input.focus();
-                    const range = document.createRange();
-                    range.selectNodeContents(input);
-                    range.collapse(false);
-                    const sel = window.getSelection();
-                    sel.removeAllRanges();
-                    sel.addRange(range);
+                    try {
+                        const range = document.createRange();
+                        range.selectNodeContents(input);
+                        range.collapse(false);
+                        const newSel = window.getSelection();
+                        newSel.removeAllRanges();
+                        newSel.addRange(range);
+                    } catch (e) {}
                 }
             }
         });
@@ -571,11 +618,22 @@
         try { document.execCommand("selectAll", false, null); document.execCommand(isHtml ? "insertHTML" : "insertText", false, content); } catch { input.innerText = content; }
         input.dispatchEvent(new Event("input", { bubbles: true })); return true;
     }
+    function setComposerTextDirect(input, content, isHtml = false) {
+        if (!input) return false;
+        if (input.tagName === "TEXTAREA") { 
+            input.value = content; 
+            input.dispatchEvent(new Event("input", { bubbles: true })); 
+            return true; 
+        }
+        input.textContent = content;
+        input.dispatchEvent(new Event("input", { bubbles: true })); 
+        return true;
+    }
     function findSendButton() {
         const container = findComposerContainer(); if (!container) return null;
         const b = container.querySelector('button[aria-label="Send message"]'); return b && isVisible(b) ? b : null;
     }
-    function clearReplyContext() { replyContext = ""; removeChip(); }
+    function clearReplyContext() { replyContext = ""; replySourceId = null; removeChip(); }
 
     function renderChip() {
         const chip = ensureChip();
@@ -703,7 +761,10 @@
         btn.style.left = `${left}px`;
         btn.style.display = "flex";
     }
-    function truncate(str, n) { return str.length > n ? str.slice(0, n - 1) + "…" : str; }
+    function truncate(str, n) { 
+        if (!str) return ''; 
+        return str.length > n ? str.slice(0, n - 1) + "…" : str; 
+    }
     function scrollToQuote(targetText, currentChip, targetId) {
         if (targetId) {
             const targetEl = document.getElementById(targetId);
@@ -743,7 +804,7 @@
 
             if (sel.anchorNode) {
                 const anchor = sel.anchorNode.nodeType === Node.ELEMENT_NODE ? sel.anchorNode : sel.anchorNode.parentElement;
-                if (!anchor.closest("structured-content-container, .model-response-text, model-response")) {
+                if (!anchor || !anchor.closest("structured-content-container, .model-response-text, model-response")) {
                     hideButton();
                     return;
                 }
